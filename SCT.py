@@ -48,7 +48,7 @@ def GenerateUsername(raw_name):
 
 
 def GeneratePassword():
-    return str(random.randint(111_111_111, 999_999_999))
+    return str(random.randint(111111111, 999999999))
 
 
 def _create_home_directory(username: str) -> None:

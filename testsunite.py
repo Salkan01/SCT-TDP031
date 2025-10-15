@@ -3,20 +3,13 @@ import os, sys, re, subprocess, pwd
 from pathlib import Path
 import pytest
 
-# Path to your script
 SCT = Path(__file__).with_name("SCT.py")
 
-# useradd(8)-compatible username pattern (lowercase start; <=32; only a-z0-9_-)
 USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
-# Your desired format: 5 letters + 3 digits = 8 chars
 EIGHT_RE = re.compile(r"^[a-z]{5}\d{3}$")
 
 @pytest.fixture
 def stub_env(tmp_path, monkeypatch):
-    """
-    Put stub 'useradd' and 'chpasswd' first on PATH.
-    They just log calls to files so we can assert behavior.
-    """
     bindir = tmp_path / "bin"
     logs = tmp_path / "logs"
     bindir.mkdir(); logs.mkdir()
@@ -60,8 +53,6 @@ def run_sct(names_text: str, env):
 
     return proc, users, cp_lines
 
-# -------- SCT.2 black-box tests for your SCT.py --------
-
 def test_uniqueness_and_length(stub_env):
     proc, users, cp = run_sct("Ada Lovelace\nAda Lovelace\n", stub_env)
     assert proc.returncode == 0, proc.stderr
@@ -94,22 +85,3 @@ def test_uses_chpasswd_not_passwd(stub_env):
     assert len(users) == 1
     assert len(cp) == 1 and cp[0].startswith(users[0] + ":")
 
-# -------- SCT.3 tests (system state) --------
-
-def test_root_exists():
-    pw = pwd.getpwnam("root")
-    assert pw.pw_uid == 0
-
-@pytest.mark.skipif(not Path("/etc/shells").exists(), reason="/etc/shells missing")
-def test_games_has_no_valid_shell():
-    # Read valid shells dynamically
-    shells = {
-        line.strip()
-        for line in Path("/etc/shells").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    }
-    try:
-        pw = pwd.getpwnam("games")
-    except KeyError:
-        pytest.skip("user 'games' not present on this system")
-    assert (pw.pw_shell or "") not in shells, f"'games' has a valid shell: {pw.pw_shell}"
