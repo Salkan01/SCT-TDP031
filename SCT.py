@@ -39,7 +39,7 @@ def GenerateUsername(raw_name):
     existing = {user.pw_name for user in pwd.getpwall()}
     existing.update(created_usernames)
 
-    for i in range(1000):
+    for i in random.sample(range(1000), 1000):
         candidate = f"{letters}{i:03d}"
         if candidate not in existing:
             return candidate
