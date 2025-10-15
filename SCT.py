@@ -1,27 +1,74 @@
 #!/usr/bin/env python3
-import re, random, os, sys
-import subprocess, pwd
+import os
+import random
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pwd
 
 created_usernames = set()
 
-def GenerateUsername(username):
-    print()
-    username = re.sub(r"ö", "o", re.sub(r"å|ä", "a", username)) # Remove åäö
 
-    # Removes anything but ASCII chars
-    # Also removes anything within "" or ()
-    username = re.sub(r"(\(.*\))|(\\\".*\\\")|[^A-z|\s|-]", "", username).strip().lower()
-    
-    # Select three first letters of first name and two first letters of last name and append three random digits
-    nameList = username.split()
-    print(nameList)
-    if (len(nameList) < 2):
-        return ""
-    username = nameList[0][:3] + nameList[-1][:2] + str(random.randint(100, 999))
-    return username
+def _clean_name(raw_name: str) -> str:
+    """Return a cleaned, lowercase version of ``raw_name``."""
+
+    name = raw_name.lower()
+    name = re.sub(r"å|ä", "a", name)
+    name = re.sub(r"ö", "o", name)
+    name = re.sub(r'(".*?"|\(.*?\))', " ", name)
+    name = re.sub(r"[^A-Za-z\s-]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip().lower()
+    return name
+
+
+def GenerateUsername(raw_name):
+    cleaned = _clean_name(raw_name)
+    parts = cleaned.split()
+
+    if len(parts) >= 2:
+        letters = parts[0][:3] + parts[-1][:2]
+    elif len(parts) == 1:
+        letters = parts[0][:5]
+    else:
+        letters = "user"
+
+    letters = letters[:5].ljust(5, "x")
+
+    existing = {user.pw_name for user in pwd.getpwall()}
+    existing.update(created_usernames)
+
+    for i in range(1000):
+        candidate = f"{letters}{i:03d}"
+        if candidate not in existing:
+            return candidate
+
+    raise RuntimeError("No free username available")
+
 
 def GeneratePassword():
-    return random.randint(111111111, 999999999)
+    return str(random.randint(111_111_111, 999_999_999))
+
+
+def _create_home_directory(username: str) -> None:
+    """Best-effort attempt to create the user's home directory."""
+
+    home_path = Path("/home") / username
+    if home_path.exists():
+        return
+
+    try:
+        subprocess.run(["mkhomedir_helper", username], check=False)
+        return
+    except FileNotFoundError:
+        pass
+
+    try:
+        os.makedirs(home_path, exist_ok=True)
+    except OSError:
+        return
+
 
 def NewUser(name):
     try:
@@ -40,17 +87,32 @@ def NewUser(name):
     password = GeneratePassword()
 
     try:
-        subprocess.run(["chpasswd"], input=f"{username}:{password}\n",
-        text=True, check=True)
+        subprocess.run(
+            ["chpasswd"],
+            input=f"{username}:{password}\n",
+            text=True,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         print(f"Misslyckades att sätta lösenord för '{username}': {e}")
         return
 
+    _create_home_directory(username)
+
     print(f"User {username} added with password {password}")
+
 
 def LoadUsersFromFile(filename):
     with open(filename, "r", encoding="utf-8") as f:
         for line in f:
-            NewUser(line.strip())
+            name = line.strip()
+            if not name:
+                continue
+            NewUser(name)
 
-LoadUsersFromFile(sys.argv[1])
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <file-with-names>")
+        sys.exit(1)
+    LoadUsersFromFile(sys.argv[1])
